@@ -24,6 +24,8 @@
 
 DECLARE_string(flagfile);
 
+DWORD kServiceMainThreadId = NULL;
+
 namespace osquery {
 
 static const std::string kDefaultFlagsFile{OSQUERY_HOME "\\osquery.flags"};
@@ -323,16 +325,19 @@ void WINAPI ServiceControlHandler(DWORD control_code) {
         }
         CloseHandle(stopEvent);
       }
-      // Give the watcher an opportunity to shutdown gracefully
-      unsigned long tid = static_cast<unsigned long>(
-          std::hash<std::thread::id>{}(kMainThreadId));
-      auto mainThread = OpenThread(SYNCHRONIZE, FALSE, tid);
-      if (mainThread == NULL) {
-        SLOG("Failed to open handle to thread " + std::to_string(tid) +
-             " for service stop with " + std::to_string(GetLastError()));
+      
+      if (kServiceMainThreadId) {
+        HANDLE hThread = OpenThread(SYNCHRONIZE, FALSE, kServiceMainThreadId);
+        if(hThread) {
+          WaitForSingleObjectEx(hThread, INFINITE, false);
+        }
+        else {
+          SLOG("Failed to open handle to thread " + std::to_string(kServiceMainThreadId) +
+               " for service stop with " + std::to_string(GetLastError()));
+          //Sleep(1000) ?
+        }
       }
-      WaitForSingleObjectEx(mainThread, INFINITE, false);
-      CloseHandle(mainThread);
+       
     }
     UpdateServiceStatus(0, SERVICE_STOPPED, 0, 4);
 
@@ -350,7 +355,7 @@ void WINAPI ServiceMain(DWORD argc, LPSTR* argv) {
     kServiceStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
     kServiceStatus.dwServiceSpecificExitCode = 0;
     UpdateServiceStatus(0, SERVICE_START_PENDING, 0, 0);
-
+    kServiceMainThreadId = GetCurrentThreadId();
     auto stopEvent =
         ::CreateEventA(nullptr, TRUE, FALSE, kStopEventName.c_str());
     if (stopEvent != nullptr) {

@@ -701,6 +701,11 @@ void Initializer::waitForShutdown() {
   // Hopefully release memory used by global string constructors in gflags.
   GFLAGS_NAMESPACE::ShutDownCommandLineFlags();
   DatabasePlugin::shutdown();
+#ifdef WIN32
+  if(isWatcher()) {
+    ExitThread((kExitCode != 0) ? kExitCode : EXIT_SUCCESS);
+  }
+#endif
   ::exit((kExitCode != 0) ? kExitCode : EXIT_SUCCESS);
 }
 
