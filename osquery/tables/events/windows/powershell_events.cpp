@@ -35,7 +35,7 @@ const std::string kPowershellDomain{"powershell_script_block_logs"};
 const std::string kScriptBlockPrefix{"script_block."};
 const std::string kScriptBlocksReceivedSuffix{".blocks_received"};
 const std::wstring kPowershellEventsChannel{
-    L"microsoft-windows-powershell/operational"};
+    L"Microsoft-Windows-PowerShell/Operational"};
 
 const int kScriptBlockLoggingEid{4104};
 const int kCharFreqVectorLen{256};
