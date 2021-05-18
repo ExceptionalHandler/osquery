@@ -1,25 +1,27 @@
 /**
- *  Copyright (c) 2014-present, Facebook, Inc.
- *  All rights reserved.
+ * Copyright (c) 2014-present, The osquery authors
  *
- *  This source code is licensed under both the Apache 2.0 license (found in the
- *  LICENSE file in the root directory of this source tree) and the GPLv2 (found
- *  in the COPYING file in the root directory of this source tree).
- *  You may select, at your option, one of the above-listed licenses.
+ * This source code is licensed as defined by the LICENSE file found in the
+ * root directory of this source tree.
+ *
+ * SPDX-License-Identifier: (Apache-2.0 OR GPL-2.0-only)
  */
 
 #include <AccCtrl.h>
 #include <Aclapi.h>
+
+#include <osquery/utils/conversions/windows/strings.h>
+#include <osquery/utils/system/system.h>
+
+#include <boost/algorithm/string/join.hpp>
+#include <boost/filesystem.hpp>
+#include <osquery/core/tables.h>
+#include <osquery/logger/logger.h>
+
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <windows.h>
-
-#include <boost/algorithm/string/join.hpp>
-#include <boost/filesystem.hpp>
-#include <osquery/logger.h>
-#include <osquery/tables.h>
 
 namespace alg = boost::algorithm;
 namespace fs = boost::filesystem;
@@ -31,52 +33,52 @@ static const unsigned long maxBuffSize = 256;
 
 // map to get access mode string
 static const std::unordered_map<BYTE, std::string> kAccessCodeToStr = {
-  {ACCESS_ALLOWED_ACE_TYPE, "Grant"},
-  {ACCESS_DENIED_ACE_TYPE, "Deny"},
-  {SYSTEM_AUDIT_ACE_TYPE, "Audit"},
-  {SYSTEM_ALARM_ACE_TYPE, "Alarm"},
-  {ACCESS_ALLOWED_COMPOUND_ACE_TYPE, "Compounded Grant"},
-  {ACCESS_ALLOWED_OBJECT_ACE_TYPE, "Grant Object"},
-  {ACCESS_DENIED_OBJECT_ACE_TYPE, "Deny Object"},
-  {SYSTEM_AUDIT_OBJECT_ACE_TYPE, "Audit Object"},
-  {SYSTEM_ALARM_OBJECT_ACE_TYPE, "Alarm Object"},
-  {ACCESS_ALLOWED_CALLBACK_ACE_TYPE, "Grant with Callback"},
-  {ACCESS_DENIED_CALLBACK_ACE_TYPE, "Deny with Callback"},
-  {ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE, "Grant Object with Callback"},
-  {ACCESS_DENIED_CALLBACK_OBJECT_ACE_TYPE, "Deny Object with Callback"},
-  {SYSTEM_AUDIT_CALLBACK_ACE_TYPE, "Audit with Callback"},
-  {SYSTEM_AUDIT_CALLBACK_OBJECT_ACE_TYPE, "Audit Object with Callback"},
-  {SYSTEM_ALARM_CALLBACK_OBJECT_ACE_TYPE, "Alarm Object with Callback"},
-  {SYSTEM_MANDATORY_LABEL_ACE_TYPE, "Mandatory Label"},
-  {SYSTEM_RESOURCE_ATTRIBUTE_ACE_TYPE, "Resource Attribute"},
-  {SYSTEM_SCOPED_POLICY_ID_ACE_TYPE, "Scoped Policy"},
-  {SYSTEM_PROCESS_TRUST_LABEL_ACE_TYPE, "Process trust Label"}};
+    {ACCESS_ALLOWED_ACE_TYPE, "Grant"},
+    {ACCESS_DENIED_ACE_TYPE, "Deny"},
+    {SYSTEM_AUDIT_ACE_TYPE, "Audit"},
+    {SYSTEM_ALARM_ACE_TYPE, "Alarm"},
+    {ACCESS_ALLOWED_COMPOUND_ACE_TYPE, "Compounded Grant"},
+    {ACCESS_ALLOWED_OBJECT_ACE_TYPE, "Grant Object"},
+    {ACCESS_DENIED_OBJECT_ACE_TYPE, "Deny Object"},
+    {SYSTEM_AUDIT_OBJECT_ACE_TYPE, "Audit Object"},
+    {SYSTEM_ALARM_OBJECT_ACE_TYPE, "Alarm Object"},
+    {ACCESS_ALLOWED_CALLBACK_ACE_TYPE, "Grant with Callback"},
+    {ACCESS_DENIED_CALLBACK_ACE_TYPE, "Deny with Callback"},
+    {ACCESS_ALLOWED_CALLBACK_OBJECT_ACE_TYPE, "Grant Object with Callback"},
+    {ACCESS_DENIED_CALLBACK_OBJECT_ACE_TYPE, "Deny Object with Callback"},
+    {SYSTEM_AUDIT_CALLBACK_ACE_TYPE, "Audit with Callback"},
+    {SYSTEM_AUDIT_CALLBACK_OBJECT_ACE_TYPE, "Audit Object with Callback"},
+    {SYSTEM_ALARM_CALLBACK_OBJECT_ACE_TYPE, "Alarm Object with Callback"},
+    {SYSTEM_MANDATORY_LABEL_ACE_TYPE, "Mandatory Label"},
+    {SYSTEM_RESOURCE_ATTRIBUTE_ACE_TYPE, "Resource Attribute"},
+    {SYSTEM_SCOPED_POLICY_ID_ACE_TYPE, "Scoped Policy"},
+    {SYSTEM_PROCESS_TRUST_LABEL_ACE_TYPE, "Process trust Label"}};
 
 // map to build access string
 static const std::map<unsigned long, std::string> kPermVals = {
-  {DELETE, "Delete"},
-  {READ_CONTROL, "Read Control"},
-  {WRITE_DAC, "Write DAC"},
-  {WRITE_OWNER, "Write Owner"},
-  {SYNCHRONIZE, "Synchronize"},
-  {STANDARD_RIGHTS_REQUIRED, "Std Rights Required"},
-  {STANDARD_RIGHTS_ALL, "Std Rights All"},
-  {SPECIFIC_RIGHTS_ALL, "Specific Rights All"},
-  {ACCESS_SYSTEM_SECURITY, "Access System Security"},
-  {MAXIMUM_ALLOWED, "Maximum Allowed"},
-  {GENERIC_READ, "Generic Read"},
-  {GENERIC_WRITE, "Generic Write"},
-  {GENERIC_EXECUTE, "Generic Execute"},
-  {GENERIC_ALL, "Generic All"}};
+    {DELETE, "Delete"},
+    {READ_CONTROL, "Read Control"},
+    {WRITE_DAC, "Write DAC"},
+    {WRITE_OWNER, "Write Owner"},
+    {SYNCHRONIZE, "Synchronize"},
+    {STANDARD_RIGHTS_REQUIRED, "Std Rights Required"},
+    {STANDARD_RIGHTS_ALL, "Std Rights All"},
+    {SPECIFIC_RIGHTS_ALL, "Specific Rights All"},
+    {ACCESS_SYSTEM_SECURITY, "Access System Security"},
+    {MAXIMUM_ALLOWED, "Maximum Allowed"},
+    {GENERIC_READ, "Generic Read"},
+    {GENERIC_WRITE, "Generic Write"},
+    {GENERIC_EXECUTE, "Generic Execute"},
+    {GENERIC_ALL, "Generic All"}};
 
 // map to get inheritance string
 static const std::unordered_map<unsigned long, std::string> kInheritanceToStr = {
-  {CONTAINER_INHERIT_ACE, "Container Inherit Ace"},
-  {NO_PROPAGATE_INHERIT_ACE, "Inherit No Propagate"},
-  {INHERIT_ONLY_ACE, "Inherit Only"},
-  {OBJECT_INHERIT_ACE, "Object Inherit Ace"},
-  {SUB_CONTAINERS_AND_OBJECTS_INHERIT, "Sub containers and Objects Inherit"},
-  {INHERITED_ACE, "Inherited Ace"}};
+    {CONTAINER_INHERIT_ACE, "Container Inherit Ace"},
+    {NO_PROPAGATE_INHERIT_ACE, "Inherit No Propagate"},
+    {INHERIT_ONLY_ACE, "Inherit Only"},
+    {OBJECT_INHERIT_ACE, "Object Inherit Ace"},
+    {SUB_CONTAINERS_AND_OBJECTS_INHERIT, "Sub containers and Objects Inherit"},
+    {INHERITED_ACE, "Inherited Ace"}};
 
 std::string accessCodeToStr(ACE_HEADER aceHeader) {
   std::string sAccessCode("");
@@ -120,7 +122,7 @@ std::string pSidToStrUserName(PSID psid) {
   char name[maxBuffSize];
   char domain[maxBuffSize];
   SID_NAME_USE accountType;
-  auto r = LookupAccountSid(nullptr, psid, name, &sizeOut, domain, &sizeOut, &accountType);
+  auto r = LookupAccountSidA(nullptr, psid, name, &sizeOut, domain, &sizeOut, &accountType);
   if (r == FALSE) {
     VLOG(1) << "LookupAccountSid error: " << GetLastError();
     return "";
@@ -167,11 +169,11 @@ QueryData genNtfsAclPerms(QueryContext& context) {
       auto aceType = accessCodeToStr(pAce->Header);
       auto aceFlags = inheritCodeToStr(pAce->Header.AceFlags);
 
-      r["path"] = TEXT(pathString);
-      r["type"] = TEXT(aceType);
-      r["principal"] = TEXT(trusteeName);
-      r["access"] = TEXT(perms);
-      r["inherited_from"] = TEXT(aceFlags);
+      r["path"] = SQL_TEXT(pathString);
+      r["type"] = SQL_TEXT(aceType);
+      r["principal"] = SQL_TEXT(trusteeName);
+      r["access"] = SQL_TEXT(perms);
+      r["inherited_from"] = SQL_TEXT(aceFlags);
       results.push_back(std::move(r));
     }
   }
